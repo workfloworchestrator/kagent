@@ -1,0 +1,83 @@
+# SURF FORK ONLY — the kagent CONTROLLER image of our integration branch `surf/v<kagent version>` (the planeo/v<version>
+# line + the SURF patch: Dedicated subagents via subAgent.agentRef and the external-A2A annotation).
+# Self-contained (no reusable workflow): multi-arch build of go/Dockerfile, the `controller` service of
+# docker-compose.surf.yaml → ghcr.io/workfloworchestrator/kagent/controller:surf-v<version>-<sha7>.
+# Pin it by that tag + its index digest. Retire it with the patch when upstream ships Dedicated subagents.
+name: surf-image-controller
+run-name: "controller (surf fork) — ${{ github.ref_name }}"
+
+on:
+  push:
+    branches: ['surf/v*']
+  workflow_dispatch:
+
+# A push build is never cancelled; a second push to the same branch queues behind it.
+concurrency:
+  group: surf-image-controller-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write # push to ghcr.io
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Derive version and tag from the branch
+        id: ver
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          # surf/v1.0.1 -> VERSION v1.0.1 (the UPSTREAM release the branch is based on; the controller refuses to
+          # start when it differs from the chart's built-in Harness images release), tag surf-v1.0.1-<sha7>.
+          if ! [[ "$REF_NAME" =~ ^surf/(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::ref '$REF_NAME' is not surf/vX.Y.Z"; exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=surf-${version}-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The Go build cross-compiles on the build platform; QEMU is for the RUN steps of the alpine final stage.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag is computed above; the action supplies the OCI labels (image.source = this repo, which links the ghcr package).
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/workfloworchestrator/kagent/controller
+          tags: type=raw,value=${{ steps.ver.outputs.tag }}
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: go
+          file: go/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_PACKAGE=core/cmd/controller/main.go
+            VERSION=${{ steps.ver.outputs.version }}
+            LDFLAGS=-X github.com/kagent-dev/kagent/go/core/internal/version.Version=${{ steps.ver.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

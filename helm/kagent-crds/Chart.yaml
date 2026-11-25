@@ -1,0 +1,8 @@
+# Committed (force-added; helm/.gitignore ignores it) so Argo can use this path as a git source on the surf/v1.0.1 branch.
+apiVersion: v2
+name: kagent-crds
+description: CRDs for kagent
+type: application
+version: 1.0.1
+annotations:
+  "org.opencontainers.image.source": "https://github.com/kagent-dev/kagent"

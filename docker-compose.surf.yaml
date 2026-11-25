@@ -1,0 +1,20 @@
+# SURF FORK ONLY — never part of an upstream PR. The image of our kagent integration branch `surf/v<kagent version>`
+# (the planeo/v<version> line + the SURF patch: Dedicated subagents via subAgent.agentRef and the external-A2A
+# annotation). Built by .github/workflows/surf-image-controller.yml → ghcr.io/workfloworchestrator/kagent/controller:
+# surf-v<version>-<sha7>. Only the controller is built here: the golang-adk runtime is planeo's
+# (ghcr.io/planeodev/kagent/golang-adk), see docker-compose.planeo.yaml.
+# Same recipe as upstream's `build-controller` (go/Dockerfile, BUILD_PACKAGE core/cmd/controller/main.go).
+# Local build: docker compose -f docker-compose.surf.yaml build controller
+services:
+  controller:
+    image: ghcr.io/workfloworchestrator/kagent/controller
+    build:
+      context: ./go
+      dockerfile: Dockerfile
+      args:
+        BUILD_PACKAGE: core/cmd/controller/main.go
+        # The UPSTREAM release this branch is based on, never a fork marker: the controller refuses to start when it
+        # differs from the chart's built-in Harness images release (go/core/pkg/app/images.go). The fork identity
+        # lives in the image TAG (surf-v<version>-<sha7>).
+        VERSION: v1.0.1
+        LDFLAGS: -X github.com/kagent-dev/kagent/go/core/internal/version.Version=v1.0.1
